@@ -1,0 +1,43 @@
+{
+	"schemaVersion": 1,
+	"id": "chest-esp",
+	"version": "${version}",
+	"name": "Chest ESP",
+	"description": "client-side chest esp mod",
+	"authors": [
+		"richi"
+	],
+	"contact": {
+		"homepage": "https://fabricmc.net/",
+		"sources": "https://github.com/emoneybag/chest-esp"
+	},
+	"license": "CC0-1.0",
+	"icon": "assets/chest-esp/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			"com.ricardo.chestesp.ChestESP"
+		],
+		"client": [
+			"com.ricardo.chestesp.client.ChestESPClient"
+		],
+		"modmenu": [
+			"com.ricardo.chestesp.client.ChestESPModMenu"
+		]
+	},
+	"mixins": [
+		"chest-esp.mixins.json",
+		{
+			"config": "chest-esp.client.mixins.json",
+			"environment": "client"
+		}
+	],
+	"depends": {
+		"fabricloader": ">=0.19.3",
+		"minecraft": "~1.21.11",
+		"java": ">=21",
+		"fabric-api": "*",
+		"cloth-config": ">=21.11.0",
+		"modmenu": ">=17.0.0"
+	}
+}
