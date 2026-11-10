@@ -1,232 +1,112 @@
 package com.ricardo.chestesp.client;
 
-import net.minecraft.client.Minecraft;
-import net.minecraft.core.BlockPos;
-import net.minecraft.world.level.chunk.LevelChunk;
-
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.chunk.LevelChunk;
+
+/**
+ * Keeps a list of nearby blocks to highlight so the renderer doesn't have to search
+ * the world every frame. Only chunks that are already loaded are inspected.
+ */
 public final class ESPCache {
 
-    private static final List<ESPDetector.Target> TARGETS =
-            new ArrayList<>();
+    /** A block to highlight. */
+    public record Target(BlockPos pos, ESPTarget type) {
+    }
 
-    private static int timer = 0;
-
-    private static int lastRenderDistance = -1;
-
+    private static List<Target> targets = List.of();
+    private static int ticksSinceUpdate;
     private static BlockPos lastPlayerPos;
-
-    private static Object lastLevel;
+    private static int lastRenderDistance = -1;
+    private static Level lastLevel;
 
     private ESPCache() {
     }
 
-    /**
-     * Called every client tick.
-     *
-     * Only performs a full scan when necessary.
-     */
-    public static void tick(
-            Minecraft minecraft
-    ) {
+    public static List<Target> getTargets() {
+        return targets;
+    }
 
-        if (!ESPConfig.performanceMode) {
+    /** Called every client tick; rescans only when something relevant changed. */
+    public static void tick(Minecraft minecraft) {
+        if (!ESPConfig.enabled || !ESPConfig.performanceMode) {
             clear();
             return;
         }
-
-        if (!ESPConfig.enabled) {
-            clear();
+        if (minecraft.level == null || minecraft.player == null) {
             return;
         }
 
-        if (minecraft.level == null
-                || minecraft.player == null) {
+        ticksSinceUpdate++;
 
-            return;
-        }
+        boolean newWorld = lastLevel != minecraft.level;
+        // Moving a few blocks changes which chests are in range.
+        boolean moved = lastPlayerPos == null
+                || minecraft.player.blockPosition().distSqr(lastPlayerPos) >= 16.0D;
+        boolean distanceChanged = lastRenderDistance != ESPConfig.renderDistance;
 
-        /*
-         * A new world requires a complete rebuild.
-         */
-        if (lastLevel != minecraft.level) {
-
-            clear();
-
-            lastLevel = minecraft.level;
-
-            update(minecraft);
-
-            return;
-        }
-
-        timer++;
-
-        int refreshRate =
-                Math.max(
-                        1,
-                        ESPConfig.cacheRefreshRate
-                );
-
-        BlockPos currentPos =
-                minecraft.player.blockPosition();
-
-        /*
-         * Only consider movement significant when
-         * the player has moved at least 4 blocks.
-         *
-         * This prevents rebuilding the cache every
-         * tick while the player is standing still
-         * or moving tiny amounts.
-         */
-        boolean movedEnough =
-                lastPlayerPos == null
-                        || currentPos.distSqr(
-                        lastPlayerPos
-                ) >= 16.0D;
-
-        boolean renderDistanceChanged =
-                lastRenderDistance
-                        != ESPConfig.renderDistance;
-
-        if (
-                timer >= refreshRate
-                        || movedEnough
-                        || renderDistanceChanged
-        ) {
-
+        if (newWorld || moved || distanceChanged || ticksSinceUpdate >= ESPConfig.cacheRefreshRate) {
             update(minecraft);
         }
     }
 
-    /**
-     * Performs the actual chunk scan.
-     */
-    public static void update(
-            Minecraft minecraft
-    ) {
-
-        if (minecraft.level == null
-                || minecraft.player == null) {
-
+    /** Rescans the loaded chunks around the player. */
+    public static void update(Minecraft minecraft) {
+        if (minecraft.level == null || minecraft.player == null) {
             clear();
-
             return;
         }
 
-        TARGETS.clear();
+        BlockPos playerPos = minecraft.player.blockPosition();
+        int range = ESPConfig.renderDistance;
+        double rangeSquared = (double) range * range;
+        int chunkRange = (range + 15) / 16;
+        int playerChunkX = playerPos.getX() >> 4;
+        int playerChunkZ = playerPos.getZ() >> 4;
 
-        BlockPos playerPos =
-                minecraft.player.blockPosition();
+        List<Target> found = new ArrayList<>();
 
-        int renderDistance =
-                ESPConfig.renderDistance;
-
-        int chunkDistance =
-                (renderDistance + 15) / 16;
-
-        int playerChunkX =
-                playerPos.getX() >> 4;
-
-        int playerChunkZ =
-                playerPos.getZ() >> 4;
-
-        /*
-         * Only inspect chunks that are already loaded.
-         *
-         * getChunkNow() does not force chunk generation/loading.
-         */
-        for (
-                int chunkX =
-                playerChunkX - chunkDistance;
-
-                chunkX <=
-                        playerChunkX + chunkDistance;
-
-                chunkX++
-        ) {
-
-            for (
-                    int chunkZ =
-                    playerChunkZ - chunkDistance;
-
-                    chunkZ <=
-                            playerChunkZ + chunkDistance;
-
-                    chunkZ++
-            ) {
-
-                LevelChunk chunk =
-                        minecraft.level
-                                .getChunkSource()
-                                .getChunkNow(
-                                        chunkX,
-                                        chunkZ
-                                );
-
+        for (int chunkX = playerChunkX - chunkRange; chunkX <= playerChunkX + chunkRange; chunkX++) {
+            for (int chunkZ = playerChunkZ - chunkRange; chunkZ <= playerChunkZ + chunkRange; chunkZ++) {
+                // getChunkNow never loads or generates chunks.
+                LevelChunk chunk = minecraft.level.getChunkSource().getChunkNow(chunkX, chunkZ);
                 if (chunk == null) {
                     continue;
                 }
 
-                TARGETS.addAll(
-                        ESPDetector.scanChunk(
-                                chunk,
-                                playerPos,
-                                renderDistance
-                        )
-                );
+                for (BlockEntity blockEntity : chunk.getBlockEntities().values()) {
+                    BlockPos pos = blockEntity.getBlockPos();
+                    ESPTarget type = ESPTarget.of(blockEntity.getBlockState().getBlock());
+
+                    if (type != null && pos.distSqr(playerPos) <= rangeSquared) {
+                        found.add(new Target(pos.immutable(), type));
+                    }
+                }
             }
         }
 
-        lastPlayerPos =
-                playerPos.immutable();
-
-        lastRenderDistance =
-                renderDistance;
-
-        timer = 0;
+        targets = found;
+        ticksSinceUpdate = 0;
+        lastPlayerPos = playerPos.immutable();
+        lastRenderDistance = range;
+        lastLevel = minecraft.level;
     }
 
-    /**
-     * Forces the next tick to rebuild the cache.
-     */
+    /** Forces a rescan on the next tick. */
     public static void invalidate() {
-
-        timer = Integer.MAX_VALUE;
-
         lastPlayerPos = null;
-
-        lastRenderDistance = -1;
     }
 
-    /**
-     * Completely removes cached targets.
-     */
     public static void clear() {
-
-        TARGETS.clear();
-
-        timer = 0;
-
+        targets = List.of();
+        ticksSinceUpdate = 0;
         lastPlayerPos = null;
-
         lastRenderDistance = -1;
-
         lastLevel = null;
-    }
-
-    /**
-     * Returns an immutable view of the cache.
-     *
-     * The renderer never modifies this list.
-     */
-    public static List<ESPDetector.Target> getTargets() {
-
-        return Collections.unmodifiableList(
-                TARGETS
-        );
     }
 }

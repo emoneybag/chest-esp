@@ -1,7 +1,6 @@
 package com.ricardo.chestesp.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
-import com.ricardo.chestesp.ChestESP;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -13,145 +12,44 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 
-public class ChestESPClient
-		implements ClientModInitializer {
+/** Client-only entrypoint: registers the toggle key and hooks the tick and render events. */
+public class ChestESPClient implements ClientModInitializer {
 
-	/*
-	 * ============================================================
-	 * KEYBIND
-	 * ============================================================
-	 */
+    public static final String MOD_ID = "chest-esp";
 
-	private static final KeyMapping.Category CATEGORY =
-			KeyMapping.Category.register(
-					Identifier.fromNamespaceAndPath(
-							ChestESP.MOD_ID,
-							"general"
-					)
-			);
+    private static final KeyMapping TOGGLE_KEY = KeyBindingHelper.registerKeyBinding(
+            new KeyMapping(
+                    "key.chest-esp.toggle",
+                    InputConstants.Type.KEYSYM,
+                    InputConstants.KEY_Y,
+                    KeyMapping.Category.register(Identifier.fromNamespaceAndPath(MOD_ID, "general"))
+            )
+    );
 
-	private static final KeyMapping TOGGLE_ESP_KEY =
-			KeyBindingHelper.registerKeyBinding(
-					new KeyMapping(
-							"key.chest-esp.toggle",
-							InputConstants.Type.KEYSYM,
-							InputConstants.KEY_Y,
-							CATEGORY
-					)
-			);
+    @Override
+    public void onInitializeClient() {
+        ESPConfig.load();
+        ClientTickEvents.END_CLIENT_TICK.register(ChestESPClient::onClientTick);
+        WorldRenderEvents.AFTER_ENTITIES.register(context -> ESPRenderer.render(Minecraft.getInstance()));
+    }
 
-	/*
-	 * ============================================================
-	 * INITIALIZATION
-	 * ============================================================
-	 */
+    private static void onClientTick(Minecraft minecraft) {
+        while (TOGGLE_KEY.consumeClick()) {
+            ESPConfig.enabled = !ESPConfig.enabled;
+            ESPConfig.save();
 
-	@Override
-	public void onInitializeClient() {
+            if (ESPConfig.enabled) {
+                ESPCache.invalidate();
+            } else {
+                ESPCache.clear();
+            }
 
-		ESPConfig.load();
+            if (minecraft.player != null) {
+                minecraft.player.displayClientMessage(
+                        Component.literal("Chest ESP: " + (ESPConfig.enabled ? "ON" : "OFF")), true);
+            }
+        }
 
-		/*
-		 * --------------------------------------------------------
-		 * CLIENT TICK
-		 * --------------------------------------------------------
-		 */
-
-		ClientTickEvents.END_CLIENT_TICK.register(
-				ChestESPClient::onClientTick
-		);
-
-		/*
-		 * --------------------------------------------------------
-		 * WORLD RENDER
-		 * --------------------------------------------------------
-		 */
-
-		WorldRenderEvents.AFTER_ENTITIES.register(
-				context -> {
-
-					Minecraft minecraft =
-							Minecraft.getInstance();
-
-					if (!ESPConfig.enabled) {
-						return;
-					}
-
-					if (
-							minecraft.level == null
-									|| minecraft.player == null
-					) {
-						return;
-					}
-
-					ESPRenderer.render(
-							minecraft
-					);
-				}
-		);
-
-		ChestESP.LOGGER.info(
-				"Chest ESP initialized!"
-		);
-	}
-
-	/*
-	 * ============================================================
-	 * CLIENT TICK
-	 * ============================================================
-	 */
-
-	private static void onClientTick(
-			Minecraft minecraft
-	) {
-
-		/*
-		 * Toggle ESP with Y.
-		 */
-
-		while (
-				TOGGLE_ESP_KEY.consumeClick()
-		) {
-
-			ESPConfig.enabled =
-					!ESPConfig.enabled;
-
-			ESPConfig.save();
-
-			if (!ESPConfig.enabled) {
-				ESPCache.clear();
-			} else {
-				ESPCache.invalidate();
-			}
-
-			if (minecraft.player != null) {
-
-				minecraft.player
-						.displayClientMessage(
-								Component.literal(
-										"Chest ESP: "
-												+ (
-												ESPConfig.enabled
-														? "ON"
-														: "OFF"
-										)
-								),
-								true
-						);
-			}
-		}
-
-		/*
-		 * The cache handles:
-		 *
-		 * - player movement
-		 * - render distance changes
-		 * - refresh rate
-		 * - world changes
-		 * - invalidation
-		 */
-		ESPCache.tick(
-				minecraft
-		);
-	}
+        ESPCache.tick(minecraft);
+    }
 }

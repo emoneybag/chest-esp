@@ -3,7 +3,7 @@
 	"id": "chest-esp",
 	"version": "${version}",
 	"name": "Chest ESP",
-	"description": "client-side chest esp mod",
+	"description": "Client-side ESP that highlights chests and other storage and utility blocks.",
 	"authors": [
 		"richi"
 	],
@@ -13,11 +13,8 @@
 	},
 	"license": "CC0-1.0",
 	"icon": "assets/chest-esp/icon.png",
-	"environment": "*",
+	"environment": "client",
 	"entrypoints": {
-		"main": [
-			"com.ricardo.chestesp.ChestESP"
-		],
 		"client": [
 			"com.ricardo.chestesp.client.ChestESPClient"
 		],
@@ -25,13 +22,6 @@
 			"com.ricardo.chestesp.client.ChestESPModMenu"
 		]
 	},
-	"mixins": [
-		"chest-esp.mixins.json",
-		{
-			"config": "chest-esp.client.mixins.json",
-			"environment": "client"
-		}
-	],
 	"depends": {
 		"fabricloader": ">=0.19.3",
 		"minecraft": "~1.21.11",

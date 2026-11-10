@@ -1,789 +1,172 @@
 package com.ricardo.chestesp.client;
 
-import net.fabricmc.loader.api.FabricLoader;
-
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.Reader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import java.util.Properties;
 
+import net.fabricmc.loader.api.FabricLoader;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Settings, stored in {@code config/chest-esp.properties} as plain {@code key=value} lines.
+ * Colors are hex codes such as {@code #FFAA00}. Per-block settings live on {@link ESPTarget}.
+ */
 public final class ESPConfig {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(ChestESPClient.MOD_ID);
+    private static final Path FILE =
+            FabricLoader.getInstance().getConfigDir().resolve("chest-esp.properties");
+
+    public static boolean enabled = true;
+    public static boolean throughWalls = true;
+    public static boolean filledBoxes = false;
+    public static int renderDistance = 32;
+
+    public static boolean performanceMode = true;
+    public static int cacheRefreshRate = 10;
+
+    public static boolean showLabels = true;
+    public static boolean showStorageLabels = true;
+    public static boolean showUtilityLabels = true;
+    public static boolean showDistance = true;
+    public static int labelScale = 100;
 
     private ESPConfig() {
     }
 
-    /*
-     * ============================================================
-     * CONFIG FILE
-     * ============================================================
-     */
-
-    private static final Path CONFIG_FILE =
-            FabricLoader.getInstance()
-                    .getConfigDir()
-                    .resolve("chest-esp.properties");
-
-    /*
-     * ============================================================
-     * GENERAL
-     * ============================================================
-     */
-
-    public static boolean enabled = true;
-
-    public static boolean throughWalls = true;
-
-    public static boolean filledBoxes = false;
-
-    public static int renderDistance = 32;
-
-    /*
-     * ============================================================
-     * PERFORMANCE
-     * ============================================================
-     */
-
-    public static boolean performanceMode = true;
-
-    public static int cacheRefreshRate = 10;
-
-    /*
-     * ============================================================
-     * LABELS
-     * ============================================================
-     */
-
-    public static boolean showLabels = true;
-
-    public static boolean showStorageLabels = true;
-
-    public static boolean showUtilityLabels = true;
-
-    public static boolean showDistance = true;
-
-    public static int labelScale = 100;
-
-    /*
-     * ============================================================
-     * STORAGE
-     * ============================================================
-     */
-
-    public static boolean chests = true;
-
-    public static boolean trappedChests = true;
-
-    public static boolean enderChests = true;
-
-    public static boolean barrels = true;
-
-    public static boolean shulkerBoxes = true;
-
-    public static boolean copperChests = true;
-
-    /*
-     * ============================================================
-     * UTILITY
-     * ============================================================
-     */
-
-    public static boolean furnaces = true;
-
-    public static boolean blastFurnaces = true;
-
-    public static boolean smokers = true;
-
-    public static boolean hoppers = true;
-
-    public static boolean droppers = true;
-
-    public static boolean dispensers = true;
-
-    public static boolean brewingStands = true;
-
-    public static boolean crafters = true;
-
-    /*
-     * ============================================================
-     * COLORS
-     * ============================================================
-     *
-     * IMPORTANT:
-     * These are RGB ONLY.
-     *
-     * Format:
-     *
-     * 0xRRGGBB
-     *
-     * There is NO alpha channel here.
-     */
-
-    public static int chestColor = 0xFFAA00;
-
-    public static int trappedChestColor = 0xFF3333;
-
-    public static int enderChestColor = 0xAA00FF;
-
-    public static int barrelColor = 0xAA6633;
-
-    public static int shulkerColor = 0xFF66FF;
-
-    public static int copperChestColor = 0x00CCCC;
-
-    public static int furnaceColor = 0x888888;
-
-    public static int blastFurnaceColor = 0xFF5555;
-
-    public static int smokerColor = 0xAA6633;
-
-    public static int hopperColor = 0x666666;
-
-    public static int dropperColor = 0x999999;
-
-    public static int dispenserColor = 0x55AAFF;
-
-    public static int brewingStandColor = 0xAA55FF;
-
-    public static int crafterColor = 0x55FFAA;
-
-    /*
-     * ============================================================
-     * LOAD
-     * ============================================================
-     */
-
     public static void load() {
-
-        if (!Files.exists(CONFIG_FILE)) {
+        if (!Files.exists(FILE)) {
             save();
             return;
         }
 
-        Properties properties = new Properties();
+        Properties p = new Properties();
+        try (Reader in = Files.newBufferedReader(FILE)) {
+            p.load(in);
+        } catch (IOException e) {
+            LOGGER.warn("Could not read {}", FILE, e);
+            return;
+        }
 
-        try (InputStream input =
-                     Files.newInputStream(CONFIG_FILE)) {
+        enabled = readBoolean(p, "enabled", enabled);
+        throughWalls = readBoolean(p, "throughWalls", throughWalls);
+        filledBoxes = readBoolean(p, "filledBoxes", filledBoxes);
+        renderDistance = readInt(p, "renderDistance", renderDistance, 8, 128);
 
-            properties.load(input);
+        performanceMode = readBoolean(p, "performanceMode", performanceMode);
+        cacheRefreshRate = readInt(p, "cacheRefreshRate", cacheRefreshRate, 1, 60);
 
-            /*
-             * GENERAL
-             */
+        showLabels = readBoolean(p, "showLabels", showLabels);
+        showStorageLabels = readBoolean(p, "showStorageLabels", showStorageLabels);
+        showUtilityLabels = readBoolean(p, "showUtilityLabels", showUtilityLabels);
+        showDistance = readBoolean(p, "showDistance", showDistance);
+        labelScale = readInt(p, "labelScale", labelScale, 25, 200);
 
-            enabled = getBoolean(
-                    properties,
-                    "enabled",
-                    enabled
-            );
+        for (ESPTarget target : ESPTarget.values()) {
+            String key = key(target);
+            target.enabled = readBoolean(p, key + ".enabled", target.enabled);
 
-            throughWalls = getBoolean(
-                    properties,
-                    "throughWalls",
-                    throughWalls
-            );
-
-            filledBoxes = getBoolean(
-                    properties,
-                    "filledBoxes",
-                    filledBoxes
-            );
-
-            renderDistance = getInt(
-                    properties,
-                    "renderDistance",
-                    renderDistance,
-                    8,
-                    128
-            );
-
-            /*
-             * PERFORMANCE
-             */
-
-            performanceMode = getBoolean(
-                    properties,
-                    "performanceMode",
-                    performanceMode
-            );
-
-            cacheRefreshRate = getInt(
-                    properties,
-                    "cacheRefreshRate",
-                    cacheRefreshRate,
-                    1,
-                    60
-            );
-
-            /*
-             * LABELS
-             */
-
-            showLabels = getBoolean(
-                    properties,
-                    "showLabels",
-                    showLabels
-            );
-
-            showStorageLabels = getBoolean(
-                    properties,
-                    "showStorageLabels",
-                    showStorageLabels
-            );
-
-            showUtilityLabels = getBoolean(
-                    properties,
-                    "showUtilityLabels",
-                    showUtilityLabels
-            );
-
-            showDistance = getBoolean(
-                    properties,
-                    "showDistance",
-                    showDistance
-            );
-
-            labelScale = getInt(
-                    properties,
-                    "labelScale",
-                    labelScale,
-                    25,
-                    200
-            );
-
-            /*
-             * STORAGE
-             */
-
-            chests = getBoolean(
-                    properties,
-                    "chests",
-                    chests
-            );
-
-            trappedChests = getBoolean(
-                    properties,
-                    "trappedChests",
-                    trappedChests
-            );
-
-            enderChests = getBoolean(
-                    properties,
-                    "enderChests",
-                    enderChests
-            );
-
-            barrels = getBoolean(
-                    properties,
-                    "barrels",
-                    barrels
-            );
-
-            shulkerBoxes = getBoolean(
-                    properties,
-                    "shulkerBoxes",
-                    shulkerBoxes
-            );
-
-            copperChests = getBoolean(
-                    properties,
-                    "copperChests",
-                    copperChests
-            );
-
-            /*
-             * UTILITY
-             */
-
-            furnaces = getBoolean(
-                    properties,
-                    "furnaces",
-                    furnaces
-            );
-
-            blastFurnaces = getBoolean(
-                    properties,
-                    "blastFurnaces",
-                    blastFurnaces
-            );
-
-            smokers = getBoolean(
-                    properties,
-                    "smokers",
-                    smokers
-            );
-
-            hoppers = getBoolean(
-                    properties,
-                    "hoppers",
-                    hoppers
-            );
-
-            droppers = getBoolean(
-                    properties,
-                    "droppers",
-                    droppers
-            );
-
-            dispensers = getBoolean(
-                    properties,
-                    "dispensers",
-                    dispensers
-            );
-
-            brewingStands = getBoolean(
-                    properties,
-                    "brewingStands",
-                    brewingStands
-            );
-
-            crafters = getBoolean(
-                    properties,
-                    "crafters",
-                    crafters
-            );
-
-            /*
-             * COLORS
-             */
-
-            chestColor = getColor(
-                    properties,
-                    "chestColor",
-                    chestColor
-            );
-
-            trappedChestColor = getColor(
-                    properties,
-                    "trappedChestColor",
-                    trappedChestColor
-            );
-
-            enderChestColor = getColor(
-                    properties,
-                    "enderChestColor",
-                    enderChestColor
-            );
-
-            barrelColor = getColor(
-                    properties,
-                    "barrelColor",
-                    barrelColor
-            );
-
-            shulkerColor = getColor(
-                    properties,
-                    "shulkerColor",
-                    shulkerColor
-            );
-
-            copperChestColor = getColor(
-                    properties,
-                    "copperChestColor",
-                    copperChestColor
-            );
-
-            furnaceColor = getColor(
-                    properties,
-                    "furnaceColor",
-                    furnaceColor
-            );
-
-            blastFurnaceColor = getColor(
-                    properties,
-                    "blastFurnaceColor",
-                    blastFurnaceColor
-            );
-
-            smokerColor = getColor(
-                    properties,
-                    "smokerColor",
-                    smokerColor
-            );
-
-            hopperColor = getColor(
-                    properties,
-                    "hopperColor",
-                    hopperColor
-            );
-
-            dropperColor = getColor(
-                    properties,
-                    "dropperColor",
-                    dropperColor
-            );
-
-            dispenserColor = getColor(
-                    properties,
-                    "dispenserColor",
-                    dispenserColor
-            );
-
-            brewingStandColor = getColor(
-                    properties,
-                    "brewingStandColor",
-                    brewingStandColor
-            );
-
-            crafterColor = getColor(
-                    properties,
-                    "crafterColor",
-                    crafterColor
-            );
-
-        } catch (IOException exception) {
-
-            exception.printStackTrace();
+            int color = parseColor(p.getProperty(key + ".color"));
+            if (color >= 0) {
+                target.color = color;
+            } else if (p.getProperty(key + ".color") != null) {
+                LOGGER.warn("Ignoring invalid color for {}: {}", key, p.getProperty(key + ".color"));
+            }
         }
     }
-
-    /*
-     * ============================================================
-     * SAVE
-     * ============================================================
-     */
 
     public static void save() {
+        List<String> lines = new ArrayList<>();
+        lines.add("# Chest ESP settings. Colors are hex codes, e.g. #FFAA00 (no alpha).");
 
-        Properties properties = new Properties();
+        lines.add("enabled=" + enabled);
+        lines.add("throughWalls=" + throughWalls);
+        lines.add("filledBoxes=" + filledBoxes);
+        lines.add("renderDistance=" + renderDistance);
 
-        /*
-         * GENERAL
-         */
+        lines.add("performanceMode=" + performanceMode);
+        lines.add("cacheRefreshRate=" + cacheRefreshRate);
 
-        properties.setProperty(
-                "enabled",
-                Boolean.toString(enabled)
-        );
+        lines.add("showLabels=" + showLabels);
+        lines.add("showStorageLabels=" + showStorageLabels);
+        lines.add("showUtilityLabels=" + showUtilityLabels);
+        lines.add("showDistance=" + showDistance);
+        lines.add("labelScale=" + labelScale);
 
-        properties.setProperty(
-                "throughWalls",
-                Boolean.toString(throughWalls)
-        );
-
-        properties.setProperty(
-                "filledBoxes",
-                Boolean.toString(filledBoxes)
-        );
-
-        properties.setProperty(
-                "renderDistance",
-                Integer.toString(renderDistance)
-        );
-
-        /*
-         * PERFORMANCE
-         */
-
-        properties.setProperty(
-                "performanceMode",
-                Boolean.toString(performanceMode)
-        );
-
-        properties.setProperty(
-                "cacheRefreshRate",
-                Integer.toString(cacheRefreshRate)
-        );
-
-        /*
-         * LABELS
-         */
-
-        properties.setProperty(
-                "showLabels",
-                Boolean.toString(showLabels)
-        );
-
-        properties.setProperty(
-                "showStorageLabels",
-                Boolean.toString(showStorageLabels)
-        );
-
-        properties.setProperty(
-                "showUtilityLabels",
-                Boolean.toString(showUtilityLabels)
-        );
-
-        properties.setProperty(
-                "showDistance",
-                Boolean.toString(showDistance)
-        );
-
-        properties.setProperty(
-                "labelScale",
-                Integer.toString(labelScale)
-        );
-
-        /*
-         * STORAGE
-         */
-
-        properties.setProperty(
-                "chests",
-                Boolean.toString(chests)
-        );
-
-        properties.setProperty(
-                "trappedChests",
-                Boolean.toString(trappedChests)
-        );
-
-        properties.setProperty(
-                "enderChests",
-                Boolean.toString(enderChests)
-        );
-
-        properties.setProperty(
-                "barrels",
-                Boolean.toString(barrels)
-        );
-
-        properties.setProperty(
-                "shulkerBoxes",
-                Boolean.toString(shulkerBoxes)
-        );
-
-        properties.setProperty(
-                "copperChests",
-                Boolean.toString(copperChests)
-        );
-
-        /*
-         * UTILITY
-         */
-
-        properties.setProperty(
-                "furnaces",
-                Boolean.toString(furnaces)
-        );
-
-        properties.setProperty(
-                "blastFurnaces",
-                Boolean.toString(blastFurnaces)
-        );
-
-        properties.setProperty(
-                "smokers",
-                Boolean.toString(smokers)
-        );
-
-        properties.setProperty(
-                "hoppers",
-                Boolean.toString(hoppers)
-        );
-
-        properties.setProperty(
-                "droppers",
-                Boolean.toString(droppers)
-        );
-
-        properties.setProperty(
-                "dispensers",
-                Boolean.toString(dispensers)
-        );
-
-        properties.setProperty(
-                "brewingStands",
-                Boolean.toString(brewingStands)
-        );
-
-        properties.setProperty(
-                "crafters",
-                Boolean.toString(crafters)
-        );
-
-        /*
-         * COLORS
-         */
-
-        properties.setProperty(
-                "chestColor",
-                Integer.toString(chestColor)
-        );
-
-        properties.setProperty(
-                "trappedChestColor",
-                Integer.toString(trappedChestColor)
-        );
-
-        properties.setProperty(
-                "enderChestColor",
-                Integer.toString(enderChestColor)
-        );
-
-        properties.setProperty(
-                "barrelColor",
-                Integer.toString(barrelColor)
-        );
-
-        properties.setProperty(
-                "shulkerColor",
-                Integer.toString(shulkerColor)
-        );
-
-        properties.setProperty(
-                "copperChestColor",
-                Integer.toString(copperChestColor)
-        );
-
-        properties.setProperty(
-                "furnaceColor",
-                Integer.toString(furnaceColor)
-        );
-
-        properties.setProperty(
-                "blastFurnaceColor",
-                Integer.toString(blastFurnaceColor)
-        );
-
-        properties.setProperty(
-                "smokerColor",
-                Integer.toString(smokerColor)
-        );
-
-        properties.setProperty(
-                "hopperColor",
-                Integer.toString(hopperColor)
-        );
-
-        properties.setProperty(
-                "dropperColor",
-                Integer.toString(dropperColor)
-        );
-
-        properties.setProperty(
-                "dispenserColor",
-                Integer.toString(dispenserColor)
-        );
-
-        properties.setProperty(
-                "brewingStandColor",
-                Integer.toString(brewingStandColor)
-        );
-
-        properties.setProperty(
-                "crafterColor",
-                Integer.toString(crafterColor)
-        );
-
-        try {
-
-            Files.createDirectories(
-                    CONFIG_FILE.getParent()
-            );
-
-            try (OutputStream output =
-                         Files.newOutputStream(CONFIG_FILE)) {
-
-                properties.store(
-                        output,
-                        "Chest ESP Configuration"
-                );
-            }
-
-        } catch (IOException exception) {
-
-            exception.printStackTrace();
-        }
-    }
-
-    /*
-     * ============================================================
-     * HELPERS
-     * ============================================================
-     */
-
-    private static boolean getBoolean(
-            Properties properties,
-            String key,
-            boolean defaultValue
-    ) {
-
-        String value =
-                properties.getProperty(key);
-
-        if (value == null) {
-            return defaultValue;
-        }
-
-        return Boolean.parseBoolean(value);
-    }
-
-    private static int getInt(
-            Properties properties,
-            String key,
-            int defaultValue,
-            int min,
-            int max
-    ) {
-
-        String value =
-                properties.getProperty(key);
-
-        if (value == null) {
-            return defaultValue;
+        for (ESPTarget target : ESPTarget.values()) {
+            lines.add(key(target) + ".enabled=" + target.enabled);
+            lines.add(key(target) + ".color=" + toHex(target.color));
         }
 
         try {
-
-            int parsed =
-                    Integer.parseInt(value);
-
-            return Math.max(
-                    min,
-                    Math.min(max, parsed)
-            );
-
-        } catch (NumberFormatException exception) {
-
-            return defaultValue;
+            Files.createDirectories(FILE.getParent());
+            Files.write(FILE, lines);
+        } catch (IOException e) {
+            LOGGER.warn("Could not write {}", FILE, e);
         }
     }
 
-    /*
-     * RGB color loader.
+    /** Formats an RGB value as {@code #RRGGBB}. */
+    public static String toHex(int rgb) {
+        return String.format("#%06X", rgb & 0xFFFFFF);
+    }
+
+    /**
+     * Parses {@code #RRGGBB}, {@code RRGGBB}, {@code 0xRRGGBB} or the short form {@code #RGB}.
      *
-     * The old configuration may contain ARGB values
-     * such as FFAA00. We intentionally strip the alpha
-     * byte so the configuration is RGB-only.
+     * @return the RGB value, or -1 if the text isn't a valid color
      */
-
-    private static int getColor(
-            Properties properties,
-            String key,
-            int defaultValue
-    ) {
-
-        String value =
-                properties.getProperty(key);
-
-        if (value == null) {
-            return defaultValue;
+    public static int parseColor(String text) {
+        if (text == null) {
+            return -1;
         }
 
+        String hex = text.trim();
+        if (hex.startsWith("#")) {
+            hex = hex.substring(1);
+        } else if (hex.regionMatches(true, 0, "0x", 0, 2)) {
+            hex = hex.substring(2);
+        }
+
+        if (hex.length() == 3) {
+            StringBuilder expanded = new StringBuilder();
+            for (char c : hex.toCharArray()) {
+                expanded.append(c).append(c);
+            }
+            hex = expanded.toString();
+        }
+
+        if (!hex.matches("[0-9a-fA-F]{6}")) {
+            return -1;
+        }
+        return Integer.parseInt(hex, 16);
+    }
+
+    private static String key(ESPTarget target) {
+        return target.name().toLowerCase(Locale.ROOT);
+    }
+
+    private static boolean readBoolean(Properties p, String key, boolean fallback) {
+        String value = p.getProperty(key);
+        return value == null ? fallback : Boolean.parseBoolean(value.trim());
+    }
+
+    private static int readInt(Properties p, String key, int fallback, int min, int max) {
+        String value = p.getProperty(key);
+        if (value == null) {
+            return fallback;
+        }
         try {
-
-            String cleaned =
-                    value.trim()
-                            .replace("#", "")
-                            .replace("0x", "")
-                            .replace("0X", "");
-
-            long parsed =
-                    Long.parseLong(
-                            cleaned,
-                            16
-                    );
-
-            /*
-             * Keep only RRGGBB.
-             */
-            return (int) (parsed & 0xFFFFFF);
-
-        } catch (NumberFormatException exception) {
-
-            return defaultValue;
+            return Math.max(min, Math.min(max, Integer.parseInt(value.trim())));
+        } catch (NumberFormatException e) {
+            return fallback;
         }
     }
 }
